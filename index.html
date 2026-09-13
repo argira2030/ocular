@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Mirada → Estado → Sonido · Prototipo Argira</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --accent:#3fb950; --accent2:#58a6ff;
+    --warn:#f0883e; --err:#f85149; --text:#e6edf3; --muted:#8b949e;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; height:100vh; display:flex; flex-direction:column;
+  }
+  header{padding:10px 14px; background:var(--panel); border-bottom:1px solid #2a2f36;}
+  header h1{font-size:15px; margin:0 0 4px 0;}
+  #status{font-size:13px; color:var(--muted);}
+  #status.approach{color:var(--accent2);}
+  #status.fixating{color:var(--accent);}
+  #status.activated{color:#fff; font-weight:bold;}
+  #status.lost{color:var(--warn);}
+  #status.calib{color:var(--err);}
+
+  #stage{flex:1; position:relative; display:flex; align-items:center; justify-content:center;}
+  .grid{display:grid; grid-template-columns:1fr 1fr; grid-gap:18px; width:92%; max-width:520px;}
+  .target{
+    aspect-ratio:1/1; border-radius:20px; background:#1c2128; border:3px solid #2a2f36;
+    display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--muted);
+    transition:transform .12s ease, background .12s ease, border-color .12s ease;
+    user-select:none;
+  }
+  .target.approach{border-color:var(--accent2); color:var(--text);}
+  .target.fixating{border-color:var(--accent); transform:scale(1.03); color:var(--text);}
+  .target.activated{background:var(--accent); border-color:var(--accent); color:#04220d; font-weight:bold;}
+
+  #dwellRing{
+    position:absolute; width:70px; height:70px; border-radius:50%;
+    border:4px solid rgba(255,255,255,.15); border-top-color:var(--accent);
+    display:none; pointer-events:none; transform:rotate(-90deg);
+  }
+
+  #calibOverlay{
+    position:fixed; inset:0; background:#000; z-index:20;
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+  }
+  #calibDot{
+    width:34px; height:34px; border-radius:50%; background:var(--accent);
+    position:absolute; box-shadow:0 0 18px var(--accent); cursor:pointer;
+  }
+  #calibText{position:absolute; top:16px; width:100%; text-align:center; color:var(--muted); font-size:13px;}
+
+  .target.intended{outline:3px dashed var(--warn); outline-offset:4px;}
+  #trialBanner{
+    position:absolute; top:10px; left:50%; transform:translateX(-50%);
+    background:var(--panel); border:1px solid var(--warn); border-radius:8px;
+    padding:6px 14px; font-size:13px; display:none; z-index:5;
+  }
+  #trialSummary{
+    position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:25;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  #trialSummary .box{background:var(--panel); border-radius:12px; padding:20px; max-width:360px; font-size:13px; line-height:1.5;}
+  #trialSummary h2{margin-top:0; font-size:16px;}
+  button{
+    background:#21262d; color:var(--text); border:1px solid #30363d; border-radius:8px;
+    padding:8px 12px; font-size:13px;
+  }
+  button.primary{background:var(--accent2); color:#04141f; border:none; font-weight:bold;}
+  button.toggleOn{background:var(--accent); color:#04220d; border:none;}
+  #metrics{font-size:11px; color:var(--muted); width:100%; margin-top:4px;}
+  video{position:absolute; width:1px; height:1px; opacity:0;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mirada → Estado → Sonido — prototipo de investigación</h1>
+  <div id="status">Pulsa "Empezar" para activar cámara y audio.</div>
+</header>
+
+<div id="stage">
+  <div id="trialBanner">Ensayo – / – · Mira: <b id="trialTargetLabel">–</b></div>
+  <div class="grid" id="grid">
+    <div class="target" data-id="t1">Objetivo 1</div>
+    <div class="target" data-id="t2">Objetivo 2</div>
+    <div class="target" data-id="t3">Objetivo 3</div>
+    <div class="target" data-id="t4">Objetivo 4</div>
+  </div>
+  <div id="dwellRing"></div>
+</div>
+
+<div id="trialSummary">
+  <div class="box">
+    <h2>Resumen de la serie de pruebas</h2>
+    <div id="trialSummaryText">–</div>
+    <button id="closeSummaryBtn" style="margin-top:12px;">Cerrar</button>
+  </div>
+</div>
+
+<div id="calibOverlay" style="display:none;">
+  <div id="calibText">Mira fijamente el punto verde y mantente quieto — se detecta solo</div>
+  <div id="calibDot"></div>
+</div>
+
+<footer>
+  <button class="primary" id="startBtn">▶ Empezar (cámara + audio)</button>
+  <button id="calibBtn" disabled>🎯 Calibrar</button>
+  <button id="trialBtn" disabled>🧪 Iniciar serie de pruebas (8 ensayos)</button>
+  <button id="soundBtn" disabled>🔊 Sonido: ON</button>
+  <button id="exportBtn">⬇ Exportar registro (CSV)</button>
+  <button id="exportTrialsBtn">⬇ Exportar pruebas (CSV)</button>
+  <button id="resetBtn">↺ Reiniciar métricas</button>
+  <div id="metrics">Activaciones: 0 · Pérdidas de fijación: 0 · Tiempo medio a activación: – ms</div>
+</footer>
+
+<video id="video" autoplay playsinline muted></video>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+/* =========================================================
+   PROTOTIPO DE INVESTIGACIÓN — no es un dispositivo médico.
+   Estima la dirección de mirada a partir del iris (MediaPipe
+   FaceMesh + refineLandmarks) usando la cámara frontal del
+   móvil, y traduce el estado de fijación en capas de sonido
+   (Web Audio API). Pensado para comparar "con feedback sonoro"
+   vs "sin feedback sonoro" en tareas de selección por dwell-time.
+   ========================================================= */
+
+const videoEl = document.getElementById('video');
+const statusEl = document.getElementById('status');
+const dwellRing = document.getElementById('dwellRing');
+const targets = Array.from(document.querySelectorAll('.target'));
+const calibOverlay = document.getElementById('calibOverlay');
+const calibDot = document.getElementById('calibDot');
+const calibText = document.getElementById('calibText');
+const metricsEl = document.getElementById('metrics');
+
+let audioCtx = null, masterGain = null;
+let soundEnabled = true;
+let calibrated = false;
+let noFaceFrames = 0;
+const NO_FACE_LIMIT = 30; // ~1s a 30fps
+
+// --- Estado de fijación ---
+let activeTarget = null;
+let fixationStart = 0;
+const DWELL_MS = 1200;       // tiempo TOTAL hasta la activación
+const DEBOUNCE_MS = 280;     // fase de estabilización antes de empezar a "contar"
+const ALMOST_RATIO = 0.75;   // a partir de qué % del dwell se avisa "casi seleccionado"
+const HIT_TOLERANCE = 55;    // px de margen para considerar "sobre el objetivo"
+const SMOOTHING_WINDOW = 6;  // nº de puntos válidos que se promedian antes de decidir hit-test
+const EXIT_HYSTERESIS = 25;  // px extra que hay que salir del objetivo activo para cancelar (evita jitter en el borde)
+let almostPlayed = false;    // evita repetir el aviso "casi" varias veces por selección
+
+// --- Buffer de smoothing: media móvil de los últimos puntos válidos de mirada ---
+let gazeBuffer = [];
+function smoothPoint(pt){
+  gazeBuffer.push(pt);
+  if(gazeBuffer.length > SMOOTHING_WINDOW) gazeBuffer.shift();
+  const sx = gazeBuffer.reduce((a,p)=>a+p.x,0) / gazeBuffer.length;
+  const sy = gazeBuffer.reduce((a,p)=>a+p.y,0) / gazeBuffer.length;
+  return {x: sx, y: sy};
+}
+
+// --- Registro de eventos para exportar ---
+let eventLog = [];
+let activationCount = 0, lossCount = 0, activationDurations = [];
+
+// --- Modo de prueba: objetivo previsto vs. seleccionado ---
+let trialQueue = [], trialIndex = -1, trialActive = false;
+let currentIntended = null, trialCancelCount = 0, trialTrackingLossCount = 0, trialStartTime = 0;
+let trialLog = [];
+
+function logEvent(type, targetId, extra){
+  eventLog.push({
+    t: Math.round(performance.now()),
+    type,
+    target: targetId||'',
+    ensayo: trialActive ? trialIndex+1 : '',
+    objetivo_pedido: trialActive ? currentIntended : '',
+    ...extra
+  });
+}
+
+function updateMetrics(){
+  const avg = activationDurations.length
+    ? Math.round(activationDurations.reduce((a,b)=>a+b,0)/activationDurations.length)
+    : '–';
+  metricsEl.textContent = `Activaciones: ${activationCount} · Pérdidas de fijación: ${lossCount} · Tiempo medio a activación: ${avg} ms`;
+}
+
+// ================= AUDIO =================
+function initAudio(){
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 1;
+  masterGain.connect(audioCtx.destination);
+}
+
+function beep(freq, duration, type='sine', vol=0.15, delay=0){
+  if(!soundEnabled || !audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type; osc.frequency.value = freq;
+  g.gain.value = 0;
+  osc.connect(g); g.connect(masterGain);
+  const t0 = audioCtx.currentTime + delay;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0+0.02);
+  g.gain.linearRampToValueAtTime(0, t0+duration);
+  osc.start(t0); osc.stop(t0+duration+0.02);
+}
+
+// Tono sostenido y progresivo durante la fijación (dwell)
+let dwellOsc = null, dwellGain = null;
+function startDwellTone(){
+  if(!soundEnabled || !audioCtx) return;
+  stopDwellTone();
+  dwellOsc = audioCtx.createOscillator();
+  dwellGain = audioCtx.createGain();
+  dwellOsc.type = 'sine';
+  dwellOsc.frequency.value = 420;
+  dwellGain.gain.value = 0;
+  dwellOsc.connect(dwellGain); dwellGain.connect(masterGain);
+  dwellGain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime+0.05);
+  dwellOsc.start();
+}
+function updateDwellTone(progress){ // progress 0..1
+  if(!dwellOsc) return;
+  const freq = 420 + progress*480; // 420Hz -> 900Hz según se acerca la activación
+  dwellOsc.frequency.linearRampToValueAtTime(freq, audioCtx.currentTime+0.05);
+}
+function stopDwellTone(){
+  if(dwellOsc){
+    try{
+      dwellGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime+0.08);
+      dwellOsc.stop(audioCtx.currentTime+0.1);
+    }catch(e){}
+    dwellOsc=null; dwellGain=null;
+  }
+}
+function soundFixationRegistered(){ beep(600,0.09,'triangle',0.12); } // "la fijación está registrada"
+function soundAlmost(){ beep(760,0.05,'sine',0.13); beep(760,0.05,'sine',0.13,0.09); } // "casi seleccionado" (doble tick)
+function soundActivation(){ beep(900,0.12,'sine',0.18); beep(1350,0.16,'sine',0.14,0.05); } // "botón seleccionado"
+function soundCancel(){ beep(300,0.18,'sawtooth',0.12); } // "selección cancelada" (decisión del usuario)
+function soundNotDetected(){ beep(180,0.25,'square',0.1); } // "mirada no detectada" (fallo del sistema)
+
+// ================= REGRESIÓN LINEAL SENCILLA =================
+function transpose(A){ return A[0].map((_,c)=>A.map(r=>r[c])); }
+function matMul(A,B){
+  const res = Array.from({length:A.length},()=>Array(B[0].length).fill(0));
+  for(let i=0;i<A.length;i++)
+    for(let j=0;j<B[0].length;j++)
+      for(let k=0;k<B.length;k++) res[i][j]+=A[i][k]*B[k][j];
+  return res;
+}
+function invert3x3(M){
+  const [a,b,c]=M[0], [d,e,f]=M[1], [g,h,i]=M[2];
+  const det = a*(e*i-f*h) - b*(d*i-f*g) + c*(d*h-e*g);
+  if(Math.abs(det) < 1e-9) return null;
+  const invDet = 1/det;
+  return [
+    [(e*i-f*h)*invDet, (c*h-b*i)*invDet, (b*f-c*e)*invDet],
+    [(f*g-d*i)*invDet, (a*i-c*g)*invDet, (c*d-a*f)*invDet],
+    [(d*h-e*g)*invDet, (b*g-a*h)*invDet, (a*e-b*d)*invDet]
+  ];
+}
+function fitRegression(samples){ // samples: [{ox,oy,sx,sy}, ...]
+  const F = samples.map(s=>[s.ox, s.oy, 1]);
+  const tx = samples.map(s=>[s.sx]);
+  const ty = samples.map(s=>[s.sy]);
+  const Ft = transpose(F);
+  const FtF = matMul(Ft,F);
+  const inv = invert3x3(FtF);
+  if(!inv) return null;
+  const thetaX = matMul(inv, matMul(Ft, tx)).map(r=>r[0]);
+  const thetaY = matMul(inv, matMul(Ft, ty)).map(r=>r[0]);
+  return {thetaX, thetaY};
+}
+let regression = null;
+function predictScreenPoint(ox, oy){
+  if(!regression) return null;
+  const x = regression.thetaX[0]*ox + regression.thetaX[1]*oy + regression.thetaX[2];
+  const y = regression.thetaY[0]*ox + regression.thetaY[1]*oy + regression.thetaY[2];
+  return {x, y};
+}
+
+// ================= CALIBRACIÓN =================
+const calibPoints = [
+  {fx:0.1, fy:0.15}, {fx:0.9, fy:0.15}, {fx:0.5, fy:0.5}, {fx:0.1, fy:0.85}, {fx:0.9, fy:0.85}
+];
+let calibSamples = [];
+let calibIndex = 0;
+let collectingCalib = false;
+let latestOffset = null; // {ox, oy} del frame actual
+
+// --- Calibración sin toque: se dispara cuando el offset bruto se mantiene estable ---
+const CALIB_STABILITY_WINDOW = 15;      // nº de frames recientes que se evalúan (~0.5s a 30fps)
+const CALIB_STABILITY_THRESHOLD = 0.035; // dispersión máxima del offset para considerarlo "quieto" (heurístico, puede necesitar ajuste por dispositivo/luz)
+const CALIB_STABILITY_MS = 700;          // tiempo consecutivo estable requerido antes de aceptar el punto
+let calibWaitingForFixation = false;
+let calibOffsetHistory = [];
+let calibStableFrames = 0;
+let currentCalibOnTap = null;
+let currentCalibXY = null;
+
+function startCalibration(){
+  calibSamples = []; calibIndex = 0; calibrated = false;
+  calibOverlay.style.display = 'flex';
+  runCalibPoint();
+}
+function runCalibPoint(){
+  if(calibIndex >= calibPoints.length){
+    calibOverlay.style.display = 'none';
+    regression = fitRegression(calibSamples);
+    calibrated = !!regression;
+    document.getElementById('trialBtn').disabled = !calibrated;
+    statusEl.textContent = calibrated ? 'Calibración completa. Mira los objetivos.' : 'Calibración fallida, inténtalo de nuevo.';
+    return;
+  }
+  const p = calibPoints[calibIndex];
+  const x = p.fx * window.innerWidth, y = p.fy * window.innerHeight;
+  calibDot.style.left = (x-13)+'px';
+  calibDot.style.top = (y-13)+'px';
+  calibText.textContent = `Punto ${calibIndex+1} de ${calibPoints.length} — mira fijamente el punto verde (se detecta solo) o tócalo si prefieres`;
+  collectingCalib = false;
+  calibOffsetHistory = [];
+  calibStableFrames = 0;
+  currentCalibXY = {x, y};
+  calibWaitingForFixation = true;
+
+  const onTap = () => {
+    calibDot.removeEventListener('click', onTap);
+    calibDot.removeEventListener('touchstart', onTap);
+    beginCollectingCalibSample(x, y);
+  };
+  calibDot.addEventListener('click', onTap);
+  calibDot.addEventListener('touchstart', onTap, {passive:true});
+  currentCalibOnTap = onTap;
+}
+
+// Comprueba si el offset bruto de mirada lleva CALIB_STABILITY_MS quieto;
+// si es así, dispara la recogida de muestras igual que haría un toque.
+function checkCalibStability(){
+  if(!calibWaitingForFixation || !latestOffset) return;
+  calibOffsetHistory.push(latestOffset);
+  if(calibOffsetHistory.length > CALIB_STABILITY_WINDOW) calibOffsetHistory.shift();
+  if(calibOffsetHistory.length < CALIB_STABILITY_WINDOW) return;
+  const mx = calibOffsetHistory.reduce((a,p)=>a+p.ox,0) / calibOffsetHistory.length;
+  const my = calibOffsetHistory.reduce((a,p)=>a+p.oy,0) / calibOffsetHistory.length;
+  const spread = calibOffsetHistory.reduce((a,p)=>a+Math.hypot(p.ox-mx, p.oy-my),0) / calibOffsetHistory.length;
+  calibStableFrames = (spread < CALIB_STABILITY_THRESHOLD) ? calibStableFrames+1 : 0;
+  if(calibStableFrames*33 >= CALIB_STABILITY_MS && currentCalibXY){
+    beginCollectingCalibSample(currentCalibXY.x, currentCalibXY.y);
+  }
+}
+
+function beginCollectingCalibSample(x, y){
+  if(!calibWaitingForFixation) return; // evita doble disparo (toque + estabilidad casi simultáneos)
+  calibWaitingForFixation = false;
+  if(currentCalibOnTap){
+    calibDot.removeEventListener('click', currentCalibOnTap);
+    calibDot.removeEventListener('touchstart', currentCalibOnTap);
+    currentCalibOnTap = null;
+  }
+  calibText.textContent = `Punto ${calibIndex+1} — sigue mirando fijo… recogiendo datos`;
+    collectingCalib = true;
+    let framesLeft = 36; // ~1.2s a 30fps, ya con la mirada puesta de antemano
+    const interval = setInterval(()=>{
+      if(latestOffset){
+        calibSamples.push({ox:latestOffset.ox, oy:latestOffset.oy, sx:x, sy:y});
+      }
+      framesLeft--;
+      if(framesLeft<=0){
+        clearInterval(interval);
+        collectingCalib = false;
+        calibIndex++;
+        runCalibPoint();
+      }
+    }, 33);
+}
+
+// ================= MEDIAPIPE FACE MESH =================
+const RIGHT = {h:[33,133], v:[159,145], iris:468};
+const LEFT  = {h:[362,263], v:[386,374], iris:473};
+
+function eyeOffset(lm, eye){
+  const hx1=lm[eye.h[0]], hx2=lm[eye.h[1]], vy1=lm[eye.v[0]], vy2=lm[eye.v[1]], iris=lm[eye.iris];
+  const midX = (hx1.x+hx2.x)/2, midY=(vy1.y+vy2.y)/2;
+  const wid = Math.max(Math.abs(hx1.x-hx2.x), 1e-4);
+  const hei = Math.max(Math.abs(vy1.y-vy2.y), 1e-4);
+  return { ox: (iris.x-midX)/wid, oy: (iris.y-midY)/hei };
+}
+
+function onResults(results){
+  if(!results.multiFaceLandmarks || results.multiFaceLandmarks.length===0){
+    noFaceFrames++;
+    latestOffset = null;
+    gazeBuffer = []; // evita mezclar puntos de antes/después de perder la cara
+    if(noFaceFrames === NO_FACE_LIMIT){
+      setStatus('calib', 'Mirada no detectada — revisa luz / posición de la cámara');
+      soundNotDetected();
+      if(trialActive) trialTrackingLossCount++;
+      logEvent('mirada_no_detectada', null);
+    }
+    return;
+  }
+  noFaceFrames = 0;
+  const lm = results.multiFaceLandmarks[0];
+  const r = eyeOffset(lm, RIGHT);
+  const l = eyeOffset(lm, LEFT);
+  latestOffset = { ox:(r.ox+l.ox)/2, oy:(r.oy+l.oy)/2 };
+
+  checkCalibStability();
+
+  if(collectingCalib || !calibrated) return;
+
+  const rawPt = predictScreenPoint(latestOffset.ox, latestOffset.oy);
+  if(!rawPt) return;
+  const pt = smoothPoint(rawPt);
+  processGaze(pt.x, pt.y);
+}
+
+function processGaze(x, y){
+  let hit = null;
+
+  // Histéresis: si ya hay un objetivo activo, primero comprobamos si sigue
+  // "dentro" usando un radio ampliado (HIT_TOLERANCE + EXIT_HYSTERESIS).
+  // Así, rozar el borde no cuenta como salida; hay que alejarse claramente.
+  if(activeTarget){
+    const rect = activeTarget.getBoundingClientRect();
+    const cx = rect.left+rect.width/2, cy = rect.top+rect.height/2;
+    const dist = Math.hypot(x-cx, y-cy);
+    if(dist < rect.width/2 + HIT_TOLERANCE + EXIT_HYSTERESIS){
+      hit = {el: activeTarget, cx, cy};
+    }
+  }
+
+  // Si no hay objetivo activo, o el activo ya no cumple ni con histéresis,
+  // buscamos con el radio normal (igual que antes).
+  if(!hit){
+    for(const el of targets){
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left+rect.width/2, cy = rect.top+rect.height/2;
+      const dist = Math.hypot(x-cx, y-cy);
+      if(dist < rect.width/2 + HIT_TOLERANCE){ hit = {el, cx, cy}; break; }
+    }
+  }
+
+  if(hit){
+    dwellRing.style.display='block';
+    dwellRing.style.left=(hit.cx-35)+'px';
+    dwellRing.style.top=(hit.cy-35)+'px';
+
+    if(activeTarget !== hit.el){
+      // Entra en un objetivo nuevo -> arranca la fase de ESTABILIZACIÓN,
+      // todavía no cuenta como "avanzando", solo como "registrado".
+      if(activeTarget) endFixation(true);
+      activeTarget = hit.el;
+      fixationStart = performance.now();
+      almostPlayed = false;
+      hit.el.classList.add('approach');
+      soundFixationRegistered();
+      startDwellTone(); // tono sostenido y estable, sin subir todavía
+      setStatus('approach', 'Fijación registrada, estabilizando…');
+      logEvent('fijacion_registrada', hit.el.dataset.id);
+    } else {
+      const elapsed = performance.now() - fixationStart;
+
+      if(elapsed < DEBOUNCE_MS){
+        // Fase de estabilización: el tono se mantiene plano.
+        setStatus('approach', 'Fijación registrada, estabilizando…');
+        dwellRing.style.background = `conic-gradient(var(--accent2) 0deg, transparent 0deg)`;
+        return;
+      }
+
+      // Fase de avance del dwell-time: el tono empieza a subir de forma progresiva.
+      const progress = Math.min((elapsed-DEBOUNCE_MS)/(DWELL_MS-DEBOUNCE_MS), 1);
+      updateDwellTone(progress);
+      hit.el.classList.remove('approach');
+      hit.el.classList.add('fixating');
+      setStatus('fixating', `Selección avanzando… ${Math.round(progress*100)}%`);
+      dwellRing.style.background = `conic-gradient(var(--accent) ${progress*360}deg, transparent 0deg)`;
+
+      if(!almostPlayed && progress >= ALMOST_RATIO){
+        almostPlayed = true;
+        soundAlmost();
+        logEvent('casi_seleccionado', hit.el.dataset.id);
+      }
+
+      if(progress >= 1){
+        activationCount++;
+        activationDurations.push(Math.round(elapsed));
+        logEvent('seleccionado', hit.el.dataset.id, {duration_ms: Math.round(elapsed)});
+        hit.el.classList.remove('fixating');
+        hit.el.classList.add('activated');
+        setStatus('activated', `¡Botón seleccionado: ${hit.el.textContent}!`);
+        stopDwellTone();
+        soundActivation();
+        setTimeout(()=> hit.el.classList.remove('activated'), 500);
+
+        if(trialActive){
+          trialLog.push({
+            trial: trialIndex+1,
+            previsto: currentIntended,
+            seleccionado: hit.el.dataset.id,
+            correcto: hit.el.dataset.id === currentIntended,
+            cancelaciones: trialCancelCount,
+            perdidas_tracking: trialTrackingLossCount,
+            duracion_ms: Math.round(performance.now() - trialStartTime)
+          });
+          setTimeout(nextTrial, 900);
+        }
+
+        activeTarget = null; dwellRing.style.display='none';
+        updateMetrics();
+      }
+    }
+  } else {
+    if(activeTarget) endFixation(true);
+    dwellRing.style.display='none';
+    setStatus('', calibrated ? 'Buscando objetivo…' : 'Sin calibrar');
+  }
+}
+
+function endFixation(wasCancel){
+  if(!activeTarget) return;
+  activeTarget.classList.remove('approach','fixating');
+  stopDwellTone();
+  if(wasCancel){
+    lossCount++;
+    if(trialActive) trialCancelCount++;
+    logEvent('cancelada', activeTarget.dataset.id);
+    soundCancel();
+    setStatus('lost', 'Selección cancelada — apartaste la mirada antes de tiempo');
+    updateMetrics();
+  }
+  activeTarget = null;
+}
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+
+function startTrialSequence(){
+  if(!calibrated){
+    alert('Primero tienes que calibrar (botón "🎯 Calibrar"). Sin calibración el sistema no sabe traducir tu mirada a la pantalla.');
+    return;
+  }
+  const ids = targets.map(t=>t.dataset.id);
+  trialQueue = shuffle([...ids, ...ids]); // cada objetivo aparece 2 veces = 8 ensayos
+  trialLog = [];
+  trialIndex = -1;
+  document.getElementById('trialBanner').style.display = 'block';
+  nextTrial();
+}
+
+function resetDwellState(){
+  if(activeTarget) activeTarget.classList.remove('approach','fixating');
+  stopDwellTone();
+  activeTarget = null;
+  fixationStart = 0;
+  almostPlayed = false;
+  dwellRing.style.display = 'none';
+  gazeBuffer = []; // evita que el suavizado mezcle puntos de antes de empezar el ensayo
+}
+
+function nextTrial(){
+  resetDwellState();
+  targets.forEach(t=>t.classList.remove('intended'));
+  trialIndex++;
+  if(trialIndex >= trialQueue.length){
+    trialActive = false;
+    document.getElementById('trialBanner').style.display = 'none';
+    showTrialSummary();
+    return;
+  }
+  currentIntended = trialQueue[trialIndex];
+  const targetEl = targets.find(t=>t.dataset.id===currentIntended);
+  targetEl.classList.add('intended');
+  trialCancelCount = 0; trialTrackingLossCount = 0;
+  trialStartTime = performance.now();
+  trialActive = true;
+  document.getElementById('trialTargetLabel').textContent = targetEl.textContent;
+  document.querySelector('#trialBanner').firstChild.textContent = `Ensayo ${trialIndex+1} de ${trialQueue.length} · Mira: `;
+  if('speechSynthesis' in window){
+    const u = new SpeechSynthesisUtterance(targetEl.textContent);
+    u.lang = 'es-ES'; u.rate = 1;
+    speechSynthesis.speak(u);
+  }
+}
+
+function showTrialSummary(){
+  const total = trialLog.length;
+  const correct = trialLog.filter(r=>r.correcto).length;
+  const avgTime = total ? Math.round(trialLog.reduce((a,r)=>a+r.duracion_ms,0)/total) : 0;
+  const avgCancel = total ? (trialLog.reduce((a,r)=>a+r.cancelaciones,0)/total).toFixed(1) : 0;
+  const avgLoss = total ? (trialLog.reduce((a,r)=>a+r.perdidas_tracking,0)/total).toFixed(1) : 0;
+  document.getElementById('trialSummaryText').innerHTML =
+    `Ensayos: ${total}<br>Selección correcta: ${correct}/${total} (${total?Math.round(100*correct/total):0}%)<br>`+
+    `Tiempo medio de entrada→selección: ${avgTime} ms<br>Cancelaciones medias por ensayo: ${avgCancel}<br>`+
+    `Pérdidas de tracking medias por ensayo: ${avgLoss}<br><br>`+
+    `<i>Resultado válido solo para este prototipo (móvil + MediaPipe) y estas condiciones — no es evidencia sobre idoneidad para personas con ELA.</i>`;
+  document.getElementById('trialSummary').style.display = 'flex';
+}
+
+function setStatus(cls, text){
+  statusEl.className = cls;
+  statusEl.textContent = text;
+}
+
+// ================= INICIALIZACIÓN =================
+const faceMesh = new FaceMesh({locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
+faceMesh.setOptions({maxNumFaces:1, refineLandmarks:true, minDetectionConfidence:0.6, minTrackingConfidence:0.6});
+faceMesh.onResults(onResults);
+
+let camera = null;
+document.getElementById('startBtn').addEventListener('click', async ()=>{
+  initAudio();
+  camera = new Camera(videoEl, {
+    onFrame: async ()=>{ await faceMesh.send({image: videoEl}); },
+    width: 480, height: 360, facingMode: 'user'
+  });
+  await camera.start();
+  document.getElementById('calibBtn').disabled = false;
+  document.getElementById('soundBtn').disabled = false;
+  document.getElementById('startBtn').disabled = true;
+  statusEl.textContent = 'Cámara activa. Pulsa "Calibrar" antes de empezar.';
+});
+
+document.getElementById('calibBtn').addEventListener('click', startCalibration);
+document.getElementById('trialBtn').addEventListener('click', startTrialSequence);
+document.getElementById('closeSummaryBtn').addEventListener('click', ()=>{
+  document.getElementById('trialSummary').style.display = 'none';
+});
+
+document.getElementById('soundBtn').addEventListener('click', (e)=>{
+  soundEnabled = !soundEnabled;
+  e.target.textContent = soundEnabled ? '🔊 Sonido: ON' : '🔇 Sonido: OFF';
+  e.target.classList.toggle('toggleOn', soundEnabled);
+});
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const header = 'timestamp_ms,tipo,objetivo,ensayo,objetivo_pedido,duracion_ms\n';
+  const rows = eventLog.map(ev=>`${ev.t},${ev.type},${ev.target},${ev.ensayo},${ev.objetivo_pedido},${ev.duration_ms||''}`).join('\n');
+  const blob = new Blob([header+rows], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `registro_mirada_sonido_${Date.now()}.csv`;
+  a.click();
+});
+
+document.getElementById('exportTrialsBtn').addEventListener('click', ()=>{
+  const header = 'ensayo,previsto,seleccionado,correcto,cancelaciones,perdidas_tracking,duracion_ms\n';
+  const rows = trialLog.map(r=>`${r.trial},${r.previsto},${r.seleccionado},${r.correcto},${r.cancelaciones},${r.perdidas_tracking},${r.duracion_ms}`).join('\n');
+  const blob = new Blob([header+rows], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `resumen_pruebas_${Date.now()}.csv`;
+  a.click();
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  eventLog = []; activationCount=0; lossCount=0; activationDurations=[];
+  updateMetrics();
+});
+</script>
+</body>
+</html>
