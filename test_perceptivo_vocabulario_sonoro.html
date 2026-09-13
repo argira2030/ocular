@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Test perceptivo · Vocabulario sonoro ARGIRA</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --accent:#3fb950; --accent2:#58a6ff;
+    --warn:#f0883e; --err:#f85149; --text:#e6edf3; --muted:#8b949e;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding-bottom:20px;
+  }
+  header{padding:14px; background:var(--panel); border-bottom:1px solid #2a2f36;}
+  header h1{font-size:15px; margin:0 0 4px 0;}
+  header p{font-size:12px; color:var(--muted); margin:0;}
+  .tabs{display:flex; gap:6px; padding:10px 14px 0;}
+  .tabs button{flex:1; padding:10px; border-radius:8px 8px 0 0; border:1px solid #2a2f36; border-bottom:none;
+    background:#1c2128; color:var(--muted); font-size:13px;}
+  .tabs button.active{background:var(--panel); color:var(--text); font-weight:bold;}
+  section{display:none; padding:16px;}
+  section.active{display:block;}
+
+  .card{
+    background:#1c2128; border:1px solid #2a2f36; border-radius:12px; padding:14px; margin-bottom:10px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .card b{font-size:14px;}
+  .card small{color:var(--muted); display:block; margin-top:2px; font-size:11px;}
+  button.play{background:var(--accent2); color:#04141f; border:none; border-radius:8px; padding:9px 14px; font-weight:bold; font-size:13px; white-space:nowrap;}
+
+  .configRow{display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;}
+  input[type=number]{width:60px; padding:6px; border-radius:6px; border:1px solid #2a2f36; background:#0d1117; color:var(--text);}
+  button.primary{background:var(--accent); color:#04220d; border:none; border-radius:8px; padding:10px 16px; font-weight:bold; font-size:14px;}
+  button.secondary{background:#21262d; color:var(--text); border:1px solid #30363d; border-radius:8px; padding:9px 14px; font-size:13px;}
+  button.danger{background:var(--err); color:#2a0000; border:none; border-radius:8px; padding:9px 14px; font-size:13px; font-weight:bold;}
+
+  #testArea{display:none;}
+  #testArea.active{display:block;}
+  #progressLine{font-size:12px; color:var(--muted); margin-bottom:10px;}
+  #playAgainBtn{display:block; width:100%; margin-bottom:14px; padding:16px; font-size:15px; border-radius:12px;
+    background:var(--accent2); color:#04141f; border:none; font-weight:bold;}
+  .respGrid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .respBtn{padding:14px 8px; border-radius:10px; border:1px solid #2a2f36; background:#1c2128; color:var(--text); font-size:13px;}
+  .respBtn:active{background:#262c36;}
+  #noRespondeBtn{width:100%; margin-top:8px; padding:10px; border-radius:10px; background:#21262d; color:var(--muted); border:1px solid #30363d; font-size:13px;}
+  #repeatCounter{font-size:11px; color:var(--muted); text-align:center; margin-top:6px;}
+
+  #summary{display:none;}
+  table{width:100%; border-collapse:collapse; font-size:11px; margin-top:10px;}
+  th,td{border:1px solid #2a2f36; padding:5px; text-align:center;}
+  th{background:#1c2128; font-weight:normal; color:var(--muted);}
+  td.diag{background:rgba(63,185,80,.15); font-weight:bold;}
+  #accList{font-size:13px; margin-top:10px;}
+  #accList div{display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #2a2f36;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Test perceptivo · vocabulario sonoro ARGIRA</h1>
+  <p>¿Es reconocible cada estado solo por el sonido? Sin cámara, sin mirada — funciona offline.</p>
+</header>
+
+<div class="tabs">
+  <button id="tabTrain" class="active">🎓 Entrenamiento</button>
+  <button id="tabTest">🧪 Prueba</button>
+</div>
+
+<section id="trainSection" class="active">
+  <p style="font-size:12px;color:var(--muted);">Escucha cada sonido las veces que quieras. Aquí siempre ves qué significa.</p>
+  <div id="trainList"></div>
+</section>
+
+<section id="testSection">
+  <div id="testConfig">
+    <div class="configRow">
+      <label>Repeticiones por sonido:</label>
+      <input type="number" id="repsInput" value="4" min="1" max="10">
+    </div>
+    <button class="primary" id="startTestBtn">▶ Iniciar prueba</button>
+  </div>
+
+  <div id="testArea">
+    <div id="progressLine">Ensayo – / –</div>
+    <button id="playAgainBtn">🔊 Reproducir sonido</button>
+    <div id="repeatCounter">Repeticiones de este sonido: 0</div>
+    <div class="respGrid" id="respGrid"></div>
+    <button id="noRespondeBtn">No sé / no responder</button>
+  </div>
+
+  <div id="summary">
+    <h2 style="font-size:15px;">Resultado</h2>
+    <div id="overallAcc" style="font-size:14px;font-weight:bold;"></div>
+    <div id="accList"></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:12px;">Matriz de confusión (filas = sonido real, columnas = respuesta elegida):</p>
+    <div id="matrixWrap" style="overflow-x:auto;"></div>
+    <div class="configRow" style="margin-top:14px;">
+      <button class="secondary" id="exportBtn">⬇ Exportar registro (CSV)</button>
+      <button class="danger" id="restartBtn">↺ Nueva prueba</button>
+    </div>
+  </div>
+</section>
+
+<script>
+/* ============================================================
+   Test perceptivo del vocabulario sonoro de ARGIRA.
+   No usa cámara ni mirada: solo mide si los 6 sonidos
+   diseñados para el prototipo de gaze son reconocibles
+   por sí mismos, de forma independiente de MediaPipe/dwell.
+   ============================================================ */
+
+const STATES = [
+  {id:'registrada',    label:'Fijación registrada'},
+  {id:'avanzando',     label:'Selección avanzando'},
+  {id:'casi',          label:'Casi seleccionado'},
+  {id:'seleccionado',  label:'Seleccionado'},
+  {id:'cancelada',     label:'Cancelación voluntaria'},
+  {id:'no_detectada',  label:'Mirada no detectada'}
+];
+
+let audioCtx = null, masterGain = null;
+function ensureAudio(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 1;
+    masterGain.connect(audioCtx.destination);
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function beep(freq, duration, type='sine', vol=0.15, delay=0){
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type; osc.frequency.value = freq;
+  g.gain.value = 0;
+  osc.connect(g); g.connect(masterGain);
+  const t0 = audioCtx.currentTime + delay;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0+0.02);
+  g.gain.linearRampToValueAtTime(0, t0+duration);
+  osc.start(t0); osc.stop(t0+duration+0.02);
+}
+
+function rampTone(f0, f1, duration, vol=0.12){
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = 'sine'; osc.frequency.value = f0;
+  g.gain.value = 0;
+  osc.connect(g); g.connect(masterGain);
+  const t0 = audioCtx.currentTime;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0+0.05);
+  osc.frequency.linearRampToValueAtTime(f1, t0+duration);
+  g.gain.linearRampToValueAtTime(0, t0+duration+0.08);
+  osc.start(t0); osc.stop(t0+duration+0.1);
+}
+
+// --- Los 6 sonidos, exactamente los mismos conceptos que en el prototipo de gaze ---
+const SOUND_PLAYERS = {
+  registrada:   () => { ensureAudio(); beep(500, 0.6, 'triangle', 0.12); },
+  avanzando:    () => { ensureAudio(); rampTone(420, 780, 0.9, 0.11); },
+  casi:         () => { ensureAudio(); beep(760,0.05,'sine',0.14); beep(760,0.05,'sine',0.14,0.09); },
+  seleccionado: () => { ensureAudio(); beep(900,0.12,'sine',0.18); beep(1350,0.16,'sine',0.14,0.05); },
+  cancelada:    () => { ensureAudio(); beep(300,0.2,'sawtooth',0.13); },
+  no_detectada: () => { ensureAudio(); beep(180,0.15,'square',0.1); beep(180,0.15,'square',0.1,0.28); }
+};
+
+// ================= ENTRENAMIENTO =================
+const trainList = document.getElementById('trainList');
+STATES.forEach(s=>{
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<div><b>${s.label}</b><small>Sonido de "${s.label.toLowerCase()}"</small></div>
+                     <button class="play">▶ Reproducir</button>`;
+  card.querySelector('.play').addEventListener('click', ()=> SOUND_PLAYERS[s.id]());
+  trainList.appendChild(card);
+});
+
+// ================= PESTAÑAS =================
+document.getElementById('tabTrain').addEventListener('click', ()=>switchTab('train'));
+document.getElementById('tabTest').addEventListener('click', ()=>switchTab('test'));
+function switchTab(which){
+  document.getElementById('tabTrain').classList.toggle('active', which==='train');
+  document.getElementById('tabTest').classList.toggle('active', which==='test');
+  document.getElementById('trainSection').classList.toggle('active', which==='train');
+  document.getElementById('testSection').classList.toggle('active', which==='test');
+}
+
+// ================= MODO PRUEBA =================
+let trialQueue = [], trialIdx = 0, trialLog = [];
+let currentRepeats = 0, soundStartTime = 0;
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+
+// Construir los botones de respuesta (orden fijo, siempre los 6 estados)
+const respGrid = document.getElementById('respGrid');
+STATES.forEach(s=>{
+  const b = document.createElement('button');
+  b.className = 'respBtn'; b.textContent = s.label; b.dataset.id = s.id;
+  b.addEventListener('click', ()=>registerResponse(s.id));
+  respGrid.appendChild(b);
+});
+document.getElementById('noRespondeBtn').addEventListener('click', ()=>registerResponse('no_responde'));
+
+document.getElementById('startTestBtn').addEventListener('click', ()=>{
+  ensureAudio();
+  const reps = Math.max(1, Math.min(10, parseInt(document.getElementById('repsInput').value)||4));
+  let pool = [];
+  STATES.forEach(s=>{ for(let i=0;i<reps;i++) pool.push(s.id); });
+  trialQueue = shuffle(pool);
+  trialIdx = 0; trialLog = [];
+  document.getElementById('testConfig').style.display = 'none';
+  document.getElementById('testArea').classList.add('active');
+  document.getElementById('summary').style.display = 'none';
+  runTrial();
+});
+
+function runTrial(){
+  if(trialIdx >= trialQueue.length){ finishTest(); return; }
+  currentRepeats = 0;
+  document.getElementById('progressLine').textContent = `Ensayo ${trialIdx+1} de ${trialQueue.length}`;
+  document.getElementById('repeatCounter').textContent = 'Repeticiones de este sonido: 0';
+  playCurrentSound();
+}
+
+function playCurrentSound(){
+  const soundId = trialQueue[trialIdx];
+  SOUND_PLAYERS[soundId]();
+  soundStartTime = performance.now();
+}
+
+document.getElementById('playAgainBtn').addEventListener('click', ()=>{
+  currentRepeats++;
+  document.getElementById('repeatCounter').textContent = `Repeticiones de este sonido: ${currentRepeats}`;
+  playCurrentSound(); // se registra el nuevo momento de inicio; el tiempo de reacción se mide desde la ÚLTIMA reproducción
+});
+
+function registerResponse(responseId){
+  const soundId = trialQueue[trialIdx];
+  const reactionMs = Math.round(performance.now() - soundStartTime);
+  trialLog.push({
+    trial_id: trialIdx+1,
+    sound_id: soundId,
+    intended_state: soundId,
+    response_state: responseId,
+    correct: responseId === soundId,
+    repeticiones: currentRepeats,
+    reaction_time_ms: reactionMs,
+    timestamp: new Date().toISOString()
+  });
+  trialIdx++;
+  setTimeout(runTrial, 400); // sin revelar si fue correcto o no
+}
+
+function finishTest(){
+  document.getElementById('testArea').classList.remove('active');
+  document.getElementById('testConfig').style.display = 'block';
+  document.getElementById('summary').style.display = 'block';
+
+  const total = trialLog.length;
+  const correct = trialLog.filter(r=>r.correct).length;
+  document.getElementById('overallAcc').textContent =
+    `Acierto global: ${correct}/${total} (${total?Math.round(100*correct/total):0}%)`;
+
+  // Precisión por estado
+  const accDiv = document.getElementById('accList');
+  accDiv.innerHTML = '';
+  STATES.forEach(s=>{
+    const rows = trialLog.filter(r=>r.intended_state===s.id);
+    const ok = rows.filter(r=>r.correct).length;
+    const pct = rows.length ? Math.round(100*ok/rows.length) : 0;
+    accDiv.innerHTML += `<div><span>${s.label}</span><span>${ok}/${rows.length} (${pct}%)</span></div>`;
+  });
+
+  // Matriz de confusión (incluye 'no_responde' como columna extra)
+  const respLabels = [...STATES.map(s=>s.id), 'no_responde'];
+  const matrix = {};
+  STATES.forEach(s=>{ matrix[s.id] = {}; respLabels.forEach(r=>matrix[s.id][r]=0); });
+  trialLog.forEach(r=>{ matrix[r.intended_state][r.response_state] = (matrix[r.intended_state][r.response_state]||0)+1; });
+
+  let html = '<table><tr><th>Real \\ Respuesta</th>';
+  respLabels.forEach(r=>{ html += `<th>${r==='no_responde'?'No sé':STATES.find(s=>s.id===r)?.label.split(' ')[0]}</th>`; });
+  html += '</tr>';
+  STATES.forEach(s=>{
+    html += `<tr><th>${s.label}</th>`;
+    respLabels.forEach(r=>{
+      const val = matrix[s.id][r];
+      html += `<td class="${r===s.id?'diag':''}">${val}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</table>';
+  document.getElementById('matrixWrap').innerHTML = html;
+}
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const header = 'trial_id,sound_id,intended_state,response_state,correct,repeticiones,reaction_time_ms,timestamp\n';
+  const rows = trialLog.map(r=>
+    `${r.trial_id},${r.sound_id},${r.intended_state},${r.response_state},${r.correct},${r.repeticiones},${r.reaction_time_ms},${r.timestamp}`
+  ).join('\n');
+  const blob = new Blob([header+rows], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `test_perceptivo_${Date.now()}.csv`;
+  a.click();
+});
+
+document.getElementById('restartBtn').addEventListener('click', ()=>{
+  document.getElementById('summary').style.display = 'none';
+});
+</script>
+</body>
+</html>
